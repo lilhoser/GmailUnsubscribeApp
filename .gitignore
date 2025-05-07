@@ -1,0 +1,82 @@
+gitignore
+
+# .NET/C# specific ignores
+
+# Build output folders
+bin/
+obj/
+out/
+dist/
+build/
+
+# Solution and project files
+*.csproj.user
+*.csproj.bak
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# NuGet packages and libraries
+packages/
+*.nupkg
+!*.nupkg.metadata
+lib/
+libs/
+
+# Visual Studio and IDE files
+.vscode/
+.idea/
+*.code-workspace
+*.vs/
+*.swp
+*~.nib
+
+# Test and coverage results
+TestResults/
+*.trx
+*.coverage
+*.coveragexml
+
+# Dependency lock files
+packages.lock.json
+
+# Temporary files
+*.tmp
+*.bak
+*.cache
+*.log
+*.pdb
+*.mdb
+
+# Runtime and configuration files
+appsettings.json
+*.config.*.json
+*.config
+*.csproj.DotSettings
+*.DotSettings.user
+
+# Miscellaneous
+Thumbs.db
+.DS_Store
+*.pidb
+*.scc
+*.aps
+*.ilk
+*.tlog
+*.exp
+*.lib
+*.manifest
+*.res
+*.resources
+*.tlb
+*.vbz
+
+# Ignore sensitive files
+*.p12
+*.pfx
+*.key
+*.cer
+*.cert
+*.pem
+
