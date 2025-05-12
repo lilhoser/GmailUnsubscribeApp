@@ -1,0 +1,10 @@
+{
+    "label": "spam",
+    "maxResults": 25,
+    "virusTotalApiKey": null,
+    "hybridApiKey": null,
+    "credentialsPath": null,
+    "noLimit": false,
+    "threshold": 0.0,
+    "forceYes": false,
+}
