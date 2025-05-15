@@ -45,78 +45,109 @@ namespace GmailUnsubscribeApp
                     return;
                 }
 
-                var gmailServiceWrapper = new GmailServiceWrapper();
-                await gmailServiceWrapper.AuthenticateAsync(config.CredentialsPath);
-
-                var linkExtractor = new LinkExtractor(gmailServiceWrapper);
-                if (config.CountItems)
+                // Updated constructor with isDryRun
+                var gmailServiceWrapper = new GmailServiceWrapper(!string.IsNullOrEmpty(config.DryRunFile));
+                var extractionResult = new LinkExtractionResult
                 {
-                    int count = await linkExtractor.CountLabelItemsAsync(config.Label);
-                    Console.WriteLine($"Total emails in label '{config.Label}': {count}");
-                    return;
-                }
+                    Links = new List<string>(),
+                    EmailsScanned = 0,
+                    LinkToEmailId = new Dictionary<string, string>()
+                };
 
-                if (config.ListContents)
+                if (!string.IsNullOrEmpty(config.DryRunFile))
                 {
-                    await linkExtractor.ListLabelContentsAsync(config.Label);
-                    return;
-                }
-
-                if (string.IsNullOrEmpty(config.VirusTotalApiKey) && string.IsNullOrEmpty(config.HybridApiKey))
-                {
-                    Console.WriteLine("Error: At least one API key (VirusTotal or Hybrid Analysis) is required for scanning.");
-                    Console.WriteLine();
-                    argParser.ShowHelp();
-                    return;
-                }
-
-                await quotaDisplay.DisplayServiceAndQuotasAsync(config.VirusTotalApiKey, config.HybridApiKey, config.NoLimit);
-                Console.WriteLine();
-
-                Directory.CreateDirectory(logDir);
-                outputFile = Path.Combine(logDir, $"unsubscribe_links_{timestamp}.html");
-                var extractionResult = await linkExtractor.GetUnsubscribeLinksAsync(config.Label, config.MaxResults);
-                emailsScanned = extractionResult.EmailsScanned;
-
-                var htmlGenerator = new HtmlGenerator();
-                if (extractionResult.Links.Count > 0)
-                {
-                    var linkScanner = new LinkScanner();
-                    string cacheFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GmailUnsubscribeApp", "visited_urls.txt");
-                    var visitedUrls = Utility.LoadVisitedUrls(cacheFile);
-                    var linksToScan = extractionResult.Links.Where(link => !visitedUrls.Contains(link)).ToList();
-                    int alreadyVisited = extractionResult.Links.Count - linksToScan.Count;
-                    Console.WriteLine($"Found {extractionResult.Links.Count} unsubscribe links.");
-                    if (!string.IsNullOrEmpty(config.VirusTotalApiKey))
+                    // Dry run mode: Load links from the specified HTML file
+                    if (!File.Exists(config.DryRunFile))
                     {
-                        Console.WriteLine($"Submitting {linksToScan.Count} links to VirusTotal ({alreadyVisited} have already been visited)...");
-                        scoredLinks = await linkScanner.ScanLinksWithVirusTotalAsync(linksToScan, config.VirusTotalApiKey, config.NoLimit, config.ForceYes);
-                    }
-                    else
-                    {
-                        Console.WriteLine($"Submitting {linksToScan.Count} links to Hybrid Analysis ({alreadyVisited} have already been visited)...");
-                        scoredLinks = await linkScanner.ScanLinksWithHybridAnalysisAsync(linksToScan, config.HybridApiKey, config.NoLimit, config.ForceYes);
+                        Console.WriteLine($"Error: Dry run file '{config.DryRunFile}' not found.");
+                        return;
                     }
 
-                    if (scoredLinks.Count > 0)
+                    var htmlGenerator = new HtmlGenerator();
+                    scoredLinks = htmlGenerator.ParseHtmlFile(config.DryRunFile);
+                    if (scoredLinks.Count == 0)
                     {
-                        htmlGenerator.GenerateHtmlFile(scoredLinks, outputFile, true);
-                        Console.WriteLine($"HTML file generated with {scoredLinks.Count} scored unsubscribe links: {Path.GetFullPath(outputFile)}");
+                        Console.WriteLine($"No valid unsubscribe links found in {config.DryRunFile}.");
+                        return;
                     }
-                    else
-                    {
-                        Console.WriteLine($"No unsubscribe links were scored in {emailsScanned} emails scanned in label '{config.Label}'.");
-                    }
+
+                    Console.WriteLine($"Loaded {scoredLinks.Count} unsubscribe links from {config.DryRunFile}.");
                 }
                 else
                 {
-                    Console.WriteLine($"No unsubscribe links found in {emailsScanned} emails scanned in label '{config.Label}'.");
+                    await gmailServiceWrapper.AuthenticateAsync(config.CredentialsPath);
+                    var linkExtractor = new LinkExtractor(gmailServiceWrapper);
+                    if (config.CountItems)
+                    {
+                        int count = await linkExtractor.CountLabelItemsAsync(config.Label);
+                        Console.WriteLine($"Total emails in label '{config.Label}': {count}");
+                        return;
+                    }
+
+                    if (config.ListContents)
+                    {
+                        await linkExtractor.ListLabelContentsAsync(config.Label);
+                        return;
+                    }
+
+                    if (string.IsNullOrEmpty(config.VirusTotalApiKey) && string.IsNullOrEmpty(config.HybridApiKey))
+                    {
+                        Console.WriteLine("Error: At least one API key (VirusTotal or Hybrid Analysis) is required for scanning.");
+                        Console.WriteLine();
+                        argParser.ShowHelp();
+                        return;
+                    }
+
+                    await quotaDisplay.DisplayServiceAndQuotasAsync(config.VirusTotalApiKey, config.HybridApiKey, config.NoLimit);
+                    Console.WriteLine();
+
+                    Directory.CreateDirectory(logDir);
+                    outputFile = Path.Combine(logDir, $"unsubscribe_links_{timestamp}.html");
+                    extractionResult = await linkExtractor.GetUnsubscribeLinksAsync(config.Label, config.MaxResults);
+                    emailsScanned = extractionResult.EmailsScanned;
+
+                    var htmlGenerator = new HtmlGenerator();
+                    if (extractionResult.Links.Count > 0)
+                    {
+                        var linkScanner = new LinkScanner();
+                        string cacheFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GmailUnsubscribeApp", "visited_urls.txt");
+                        var visitedUrls = Utility.LoadVisitedUrls(cacheFile);
+                        var linksToScan = extractionResult.Links.Where(link => !visitedUrls.Contains(link)).ToList();
+                        int alreadyVisited = extractionResult.Links.Count - linksToScan.Count;
+                        Console.WriteLine($"Found {extractionResult.Links.Count} unsubscribe links.");
+                        if (!string.IsNullOrEmpty(config.VirusTotalApiKey))
+                        {
+                            Console.WriteLine($"Submitting {linksToScan.Count} links to VirusTotal ({alreadyVisited} have already been visited)...");
+                            scoredLinks = await linkScanner.ScanLinksWithVirusTotalAsync(linksToScan, config.VirusTotalApiKey, config.NoLimit, config.ForceYes);
+                        }
+                        else
+                        {
+                            Console.WriteLine($"Submitting {linksToScan.Count} links to Hybrid Analysis ({alreadyVisited} have already been visited)...");
+                            scoredLinks = await linkScanner.ScanLinksWithHybridAnalysisAsync(linksToScan, config.HybridApiKey, config.NoLimit, config.ForceYes);
+                        }
+
+                        if (scoredLinks.Count > 0)
+                        {
+                            htmlGenerator.GenerateHtmlFile(scoredLinks, outputFile, true);
+                            Console.WriteLine($"HTML file generated with {scoredLinks.Count} scored unsubscribe links: {Path.GetFullPath(outputFile)}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"No unsubscribe links were scored in {emailsScanned} emails scanned in label '{config.Label}'.");
+                        }
+                    }
+                    else
+                    {
+                        Console.WriteLine($"No unsubscribe links found in {emailsScanned} emails scanned in label '{config.Label}'.");
+                    }
                 }
 
                 if (scoredLinks.Count > 0)
                 {
-                    var linkVisitor = new LinkVisitor(gmailServiceWrapper);
-                    var visitResult = await linkVisitor.VisitUnsubscribeLinksAsync(scoredLinks, config.Threshold, extractionResult.LinkToEmailId, config.ForceYes, timestamp, issues);
+                    // Updated constructor to include EnableMailto
+                    var linkVisitor = new LinkVisitor(gmailServiceWrapper, config.EnableMailto);
+                    var linkToEmailId = extractionResult.LinkToEmailId;
+                    var visitResult = await linkVisitor.VisitUnsubscribeLinksAsync(scoredLinks, config.Threshold, linkToEmailId, config.ForceYes, timestamp, issues);
                     visitedLinks = visitResult.VisitedCount;
                     initialSuccessCount = visitResult.InitialSuccessCount;
                     confirmationSuccessCount = visitResult.ConfirmationSuccessCount;
@@ -128,7 +159,6 @@ namespace GmailUnsubscribeApp
                     {
                         Directory.CreateDirectory(logDir);
                         File.WriteAllText(issuesFile, JsonConvert.SerializeObject(issues, Formatting.Indented));
-                        Console.WriteLine($"Issues log saved to: {Path.GetFullPath(issuesFile)}");
                     }
                     catch (Exception ex)
                     {

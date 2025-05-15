@@ -1,66 +1,98 @@
-﻿using HtmlAgilityPack;
-using System.Text.RegularExpressions;
+﻿using System.Globalization;
+using System.Reflection;
 using System.Text;
 
 namespace GmailUnsubscribeApp.Helpers
 {
     public static class Utility
     {
-        public static string SanitizeHtmlContent(string content)
+        private static readonly HashSet<string> SuccessKeywords;
+
+        static Utility()
         {
-            try
+            SuccessKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("GmailUnsubscribeApp.Resources.unsubscribe_keywords.txt"))
             {
-                content = Regex.Replace(content, @"<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>", "", RegexOptions.IgnoreCase);
-                content = Regex.Replace(content, @"[^\x20-\x7E\n\r\t]", "");
-                content = Regex.Replace(content, @"\s+", " ").Trim();
-                return content;
+                if (stream != null)
+                {
+                    using (var reader = new StreamReader(stream))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                SuccessKeywords.Add(line.Trim());
+                            }
+                        }
+                    }
+                }
             }
-            catch
+            if (!SuccessKeywords.Any())
             {
-                return "Error sanitizing content";
+                throw new InvalidOperationException("Failed to load unsubscribe keywords: unsubscribe_keywords.txt is empty or missing.");
             }
         }
 
-        public static HashSet<string> LoadVisitedUrls(string cacheFile)
+        public static HashSet<string> GetUnsubscribeButtonKeywords()
         {
-            try
+            var keywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            using (var stream = Assembly.GetExecutingAssembly().GetManifestResourceStream("GmailUnsubscribeApp.Resources.button_keywords.txt"))
             {
-                string dir = Path.GetDirectoryName(cacheFile);
-                if (!Directory.Exists(dir))
+                if (stream != null)
                 {
-                    Directory.CreateDirectory(dir);
+                    using (var reader = new StreamReader(stream))
+                    {
+                        string line;
+                        while ((line = reader.ReadLine()) != null)
+                        {
+                            if (!string.IsNullOrWhiteSpace(line))
+                            {
+                                keywords.Add(line.Trim());
+                            }
+                        }
+                    }
                 }
-
-                if (!File.Exists(cacheFile))
-                {
-                    return new HashSet<string>();
-                }
-
-                return new HashSet<string>(File.ReadAllLines(cacheFile).Where(line => !string.IsNullOrEmpty(line)), StringComparer.OrdinalIgnoreCase);
             }
-            catch (Exception ex)
+            if (!keywords.Any())
             {
-                Console.WriteLine($"Warning: Failed to load visited URLs cache: {ex.Message}");
-                return new HashSet<string>();
+                throw new InvalidOperationException("Failed to load button keywords: button_keywords.txt is empty or missing.");
             }
+            return keywords;
         }
 
-        public static void SaveVisitedUrl(string cacheFile, string url)
+        public static string GenerateOutputFilePath(string outputFile)
         {
-            try
+            string dir = Path.GetDirectoryName(outputFile);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             {
-                string dir = Path.GetDirectoryName(cacheFile);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
+                Directory.CreateDirectory(dir);
+            }
+            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            string extension = Path.GetExtension(outputFile);
+            string fileNameWithoutExtension = Path.GetFileNameWithoutExtension(outputFile);
+            return Path.Combine(dir ?? "", $"{fileNameWithoutExtension}_{timestamp}{extension}");
+        }
 
-                File.AppendAllText(cacheFile, url + Environment.NewLine);
-            }
-            catch (Exception ex)
+        public static bool IsUnsubscribeSuccessful(string htmlContent)
+        {
+            if (string.IsNullOrEmpty(htmlContent))
             {
-                Console.WriteLine($"Warning: Failed to save URL to visited cache: {ex.Message}");
+                return true; // Empty body often indicates success for one-click unsubscribes
             }
+
+            string lowerContent = htmlContent.Normalize(NormalizationForm.FormC).ToLowerInvariant();
+            return SuccessKeywords.Any(keyword => lowerContent.Contains(keyword));
+        }
+
+        public static string SanitizeHtmlContent(string htmlContent)
+        {
+            if (string.IsNullOrEmpty(htmlContent))
+            {
+                return string.Empty;
+            }
+
+            return htmlContent; // Return raw HTML without sanitization
         }
 
         public static async Task<string> ReadResponseContentAsync(HttpResponseMessage response)
@@ -69,179 +101,79 @@ namespace GmailUnsubscribeApp.Helpers
             {
                 return await response.Content.ReadAsStringAsync();
             }
-            catch (InvalidOperationException)
-            {
-                try
-                {
-                    byte[] contentBytes = await response.Content.ReadAsByteArrayAsync();
-                    string contentType = response.Content.Headers.ContentType?.ToString() ?? "unknown";
-                    try
-                    {
-                        return Encoding.UTF8.GetString(contentBytes);
-                    }
-                    catch
-                    {
-                        try
-                        {
-                            return Encoding.GetEncoding("ISO-8859-1").GetString(contentBytes);
-                        }
-                        catch
-                        {
-                            return $"[Unreadable content; Content-Type: {contentType}; Hex: {BitConverter.ToString(contentBytes).Replace("-", "")}]";
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    return $"[Error reading content; Content-Type: {response.Content.Headers.ContentType?.ToString() ?? "unknown"}; Error: {ex.Message}]";
-                }
-            }
-        }
-
-        public static (int MinuteCount, int HourCount) ReadRequests(string filePath)
-        {
-            try
-            {
-                string dir = Path.GetDirectoryName(filePath);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
-
-                if (!File.Exists(filePath))
-                {
-                    return (0, 0);
-                }
-
-                string[] lines = File.ReadAllLines(filePath);
-                int minuteCount = 0;
-                int hourCount = 0;
-
-                foreach (var line in lines)
-                {
-                    string[] parts = line.Split(',');
-                    if (parts.Length == 3 && DateTime.TryParse(parts[0], out DateTime date))
-                    {
-                        if (date >= DateTime.Now.AddMinutes(-1))
-                        {
-                            minuteCount += int.TryParse(parts[2], out int count) ? count : 0;
-                        }
-                        if (date >= DateTime.Now.AddHours(-1))
-                        {
-                            hourCount += int.TryParse(parts[2], out int count) ? count : 0;
-                        }
-                    }
-                }
-
-                return (minuteCount, hourCount);
-            }
             catch
             {
-                return (0, 0);
+                return string.Empty;
             }
         }
 
-        public static void UpdateRequests(string filePath)
+        public static void SaveVisitedUrl(string cacheFile, string url)
         {
-            try
+            string dir = Path.GetDirectoryName(cacheFile);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
             {
-                string dir = Path.GetDirectoryName(filePath);
-                if (!Directory.Exists(dir))
-                {
-                    Directory.CreateDirectory(dir);
-                }
+                Directory.CreateDirectory(dir);
+            }
 
-                File.AppendAllText(filePath, $"{DateTime.Now:yyyy-MM-dd HH:mm:ss},1,1{Environment.NewLine}");
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"Warning: Failed to update request count: {ex.Message}");
-            }
+            File.AppendAllText(cacheFile, url + Environment.NewLine);
         }
 
-        public static bool IsUnsubscribeSuccessful(string htmlContent)
+        public static HashSet<string> LoadVisitedUrls(string cacheFile)
         {
-            try
+            var visitedUrls = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (File.Exists(cacheFile))
             {
-                var doc = new HtmlDocument();
-                doc.LoadHtml(htmlContent);
-
-                var forms = doc.DocumentNode.SelectNodes("//form[@action]");
-                var submitButtons = doc.DocumentNode.SelectNodes("//input[@type='submit']");
-                if (submitButtons == null)
+                foreach (var line in File.ReadAllLines(cacheFile))
                 {
-                    return true;
-                }
-
-                var successWords = new[]
-                {
-                    "unsubscribed", "success", "confirmed", "removed",
-                    "取消订阅", "成功", "确认",
-                    "सदस्यता रद्द", "सफलता", "पुष्टि",
-                    "desuscrito", "éxito", "confirmado",
-                    "désabonné", "succès", "confirmé",
-                    "إلغاء الاشتراك", "نجاح", "مؤكد",
-                    "সাবস্ক্রিপশন বাতিল", "সাফল্য", "নিশ্চিত",
-                    "cancelado", "sucesso", "confirmado",
-                    "отписан", "успех", "подтверждено",
-                    "رکنیت منسوخ", "کامیابی", "تصدیق شدہ",
-                    "berhenti berlangganan", "sukses", "dikonfirmasi",
-                    "abgemeldet", "erfolg", "bestätigt",
-                    "登録解除", "成功", "確認済み",
-                    "kujiondoa", "mafanikio", "imethibitishwa",
-                    "सदस्यता रद्द", "यश", "पुष्टी",
-                    "చందా రద్దు", "విజయం", "నిర్ధారించబడింది",
-                    "abonelikten çık", "başarı", "onaylandı",
-                    "பதிவு நீக்கப்பட்டது", "வெற்றி", "உறுதிப்படுத்தப்பட்டது",
-                    "取消订阅", "成功", "确认",
-                    "구독 취소", "성공", "확인됨"
-                };
-                var textElements = doc.DocumentNode.SelectNodes("//div|//p|//span|//h1");
-                if (textElements != null)
-                {
-                    foreach (var element in textElements)
+                    if (!string.IsNullOrWhiteSpace(line))
                     {
-                        string text = element.InnerText.ToLower();
-                        if (successWords.Any(word => text.Contains(word)))
-                        {
-                            return true;
-                        }
+                        visitedUrls.Add(line.Trim());
                     }
                 }
-
-                var successElements = doc.DocumentNode.SelectNodes("//div[@class or @id]|//p[@class or @id]|//span[@class or @id]");
-                if (successElements != null)
-                {
-                    foreach (var element in successElements)
-                    {
-                        string classAttr = element.GetAttributeValue("class", "").ToLower();
-                        string idAttr = element.GetAttributeValue("id", "").ToLower();
-                        if (classAttr.Contains("success") || classAttr.Contains("confirmation") ||
-                            classAttr.Contains("unsubscribed") || classAttr.Contains("complete") ||
-                            idAttr.Contains("success") || idAttr.Contains("confirmation") ||
-                            idAttr.Contains("unsubscribed") || idAttr.Contains("complete"))
-                        {
-                            return true;
-                        }
-                    }
-                }
-
-                return false;
             }
-            catch
-            {
-                return false;
-            }
+            return visitedUrls;
         }
 
-        public static string GenerateOutputFilePath(string baseOutputFile)
+        public static void UpdateRequests(string requestFile)
         {
-            string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string randomString = Guid.NewGuid().ToString().Substring(0, 8);
-            return Path.Combine(
-                Path.GetDirectoryName(baseOutputFile),
-                $"unsubscribe_links_{timestamp}_{randomString}.html"
-            );
+            string dir = Path.GetDirectoryName(requestFile);
+            if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            {
+                Directory.CreateDirectory(dir);
+            }
+
+            var (minuteCount, hourCount, lastUpdate) = ReadRequests(requestFile);
+            minuteCount++;
+            hourCount++;
+
+            // Reset counts based on elapsed time
+            var now = DateTime.UtcNow;
+            if ((now - lastUpdate).TotalMinutes >= 1)
+            {
+                minuteCount = 1; // Reset minute count
+            }
+            if ((now - lastUpdate).TotalHours >= 1)
+            {
+                hourCount = 1; // Reset hour count
+            }
+
+            File.WriteAllText(requestFile, $"{minuteCount},{hourCount},{now:yyyy-MM-ddTHH:mm:ssZ}");
+        }
+
+        public static (int MinuteCount, int HourCount, DateTime LastUpdate) ReadRequests(string requestFile)
+        {
+            if (!File.Exists(requestFile))
+            {
+                return (0, 0, DateTime.UtcNow);
+            }
+
+            string[] parts = File.ReadAllText(requestFile).Split(',');
+            if (parts.Length != 3 || !int.TryParse(parts[0], out int minuteCount) || !int.TryParse(parts[1], out int hourCount) || !DateTime.TryParseExact(parts[2], "yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal, out DateTime lastUpdate))
+            {
+                return (0, 0, DateTime.UtcNow);
+            }
+
+            return (minuteCount, hourCount, lastUpdate);
         }
     }
 }

@@ -2,7 +2,7 @@
   "profiles": {
     "GmailUnsubscribeApp": {
       "commandName": "Project",
-      "commandLineArgs": "--settings c:\\temp\\gmail-unsub-app-settings.json"
+      "commandLineArgs": "--settingsFile c:\\temp\\gmail-unsub-app-settings.json"
     }
   }
 }

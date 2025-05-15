@@ -12,8 +12,8 @@ namespace GmailUnsubscribeApp.Services
                 string vtRequestFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GmailUnsubscribeApp", "vt_requests.txt");
                 int dailyLimit = 500;
                 int monthlyLimit = 15500;
-                var (requestsToday, requestsThisMonth) = Utility.ReadRequests(vtRequestFile);
-                Console.WriteLine($"Detected Quotas:");
+                var (requestsToday, requestsThisMonth, timestamp) = Utility.ReadRequests(vtRequestFile);
+                Console.WriteLine($"Detected Quotas (as of {timestamp}):");
                 Console.WriteLine($"  Daily Limit: {dailyLimit} requests");
                 Console.WriteLine($"  Monthly Limit: {monthlyLimit} requests");
                 Console.WriteLine($"Consumed:");
@@ -25,8 +25,8 @@ namespace GmailUnsubscribeApp.Services
                 Console.WriteLine("Service: Hybrid Analysis");
                 string haRequestFile = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GmailUnsubscribeApp", "ha_requests.txt");
                 var (minuteLimit, hourLimit) = (200, 2000);
-                var (minuteUsed, hourUsed) = Utility.ReadRequests(haRequestFile);
-                Console.WriteLine($"Detected Quotas:");
+                var (minuteUsed, hourUsed, timestamp) = Utility.ReadRequests(haRequestFile);
+                Console.WriteLine($"Detected Quotas (as of {timestamp}):");
                 Console.WriteLine($"  Minute Limit: {minuteLimit} requests");
                 Console.WriteLine($"  Hour Limit: {hourLimit} requests");
                 Console.WriteLine($"Consumed:");

@@ -5,7 +5,7 @@
         public void PrintSummary((List<(string Link, double Score)> Links, int EmailsScanned, string OutputFile, int VisitedLinks, int InitialSuccessCount, int ConfirmationSuccessCount, int FailedCount, int AlreadyVisitedCount) result)
         {
             string appDataDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "GmailUnsubscribeApp");
-            string relativeOutputFile = Path.GetRelativePath(appDataDir, result.OutputFile);
+            string relativeOutputFile = result.OutputFile != null ? Path.GetRelativePath(appDataDir, result.OutputFile) : "N/A";
 
             Console.WriteLine("\n=== Run Summary ===");
             Console.WriteLine("+----------------+---------------+-------------------+-------------------+---------------------+--------------------+--------+");
@@ -13,7 +13,11 @@
             Console.WriteLine("+----------------+---------------+-------------------+-------------------+---------------------+--------------------+--------+");
             Console.WriteLine($"| {result.EmailsScanned,-14} | {result.Links.Count,-13} | {result.AlreadyVisitedCount,-17} | {result.VisitedLinks,-17} | {result.InitialSuccessCount,-19} | {result.ConfirmationSuccessCount,-18} | {result.FailedCount,-6} |");
             Console.WriteLine("+----------------+---------------+-------------------+-------------------+---------------------+--------------------+--------+");
-            Console.WriteLine($"- HTML File: {Path.GetFullPath(result.OutputFile)}");
+            if (result.OutputFile != null)
+            {
+                Console.WriteLine($"- HTML File: {Path.GetFullPath(result.OutputFile)}");
+            }
+
             if (result.Links.Any(l => l.Score >= 0))
             {
                 int low = result.Links.Count(l => l.Score >= 0 && l.Score < 5.0);

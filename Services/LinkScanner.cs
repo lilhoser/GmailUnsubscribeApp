@@ -121,7 +121,7 @@ namespace GmailUnsubscribeApp.Services
                 MinuteStart = minuteStart
             };
 
-            var (currentDailyCount, currentMonthlyCount) = Utility.ReadRequests(vtRequestFile);
+            var (currentDailyCount, currentMonthlyCount, _) = Utility.ReadRequests(vtRequestFile);
             if (currentDailyCount >= dailyLimit || currentMonthlyCount >= monthlyLimit)
             {
                 Console.WriteLine("VirusTotal daily or monthly request limit reached during scanning. Stopping.");
@@ -148,7 +148,7 @@ namespace GmailUnsubscribeApp.Services
                 MinuteStart = minuteStart
             };
 
-            var (currentMinuteCount, currentHourCount) = Utility.ReadRequests(haRequestFile);
+            var (currentMinuteCount, currentHourCount, _) = Utility.ReadRequests(haRequestFile);
             if (currentHourCount >= hourLimit)
             {
                 Console.WriteLine("Hybrid Analysis hour request limit reached during scanning. Stopping.");
