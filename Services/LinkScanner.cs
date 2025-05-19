@@ -49,9 +49,16 @@ namespace GmailUnsubscribeApp.Services
                         requestsMade++;
                         Utility.UpdateRequests(vtRequestFile);
                     }
-                    catch (Exception ex)
+                    catch (UriFormatException)
                     {
-                        Console.WriteLine($"Error: Failed to scan {link} with VirusTotal: {ex.Message}. Stopping scan.");
+                        //
+                        // Likely a malformed link in the email, ignore
+                        //
+                        Console.WriteLine($"Warning: Skipping malformed URI: {link}");
+                    }
+                    catch (Exception ex2)
+                    {
+                        Console.WriteLine($"Error: Failed to scan {link} with VirusTotal: {ex2.Message}. Stopping scan.");
                         break;
                     }
                 }
@@ -102,9 +109,19 @@ namespace GmailUnsubscribeApp.Services
                         requestsMadeInMinute++;
                         Utility.UpdateRequests(haRequestFile);
                     }
-                    catch (Exception ex)
+                    catch (UriFormatException)
                     {
-                        Console.WriteLine($"Error: Failed to scan {link} with Hybrid Analysis: {ex.Message}. Stopping scan.");
+                        //
+                        // Likely a malformed link in the email, ignore
+                        //
+                        Console.WriteLine($"Warning: Skipping malformed URI: {link}");
+                    }
+                    catch (Exception ex2)
+                    {
+                        //
+                        // To avoid wasting quota, stop the scan.
+                        //
+                        Console.WriteLine($"Error: Failed to scan {link} with Hybrid Analysis: {ex2.Message}. Stopping scan.");
                         break;
                     }
                 }
